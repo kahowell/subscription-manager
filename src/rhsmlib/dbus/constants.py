@@ -28,6 +28,8 @@ __all__ = [
     'CONFIG_DBUS_PATH',
     'ATTACH_INTERFACE',
     'ATTACH_DBUS_PATH',
+    'ENTITLEMENT_INTERFACE',
+    'ENTITLEMENT_DBUS_PATH',
 ]
 
 # The base of the 'well known name' used for bus and service names, as well
