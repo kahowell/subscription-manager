@@ -40,6 +40,7 @@ class EntitlementService(object):
         self.entitlement_dir = inj.require(inj.ENT_DIR)
 
     def get_status(self):
+        self.identity.reload()
         system_is_registered = self.identity.is_valid()
         overall_status = system_is_registered \
                          and self.sorter.get_system_status() \
