@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+from __future__ import print_function
+
+import argparse
+import time
+import swagger_client
+import ssl
+
+from rhsm import certificate
+from swagger_client.rest import ApiException
+from swagger_client.api.registration_api import RegistrationApi
+from pprint import pprint
+
+# Configure HTTP basic authorization: certAuth
+client = None
+
+parser = argparse.ArgumentParser(description='POC for swagger-client powered subman')
+
+def get_client(args):
+    global client
+    if client is None:
+        consumerid = None
+        configuration = swagger_client.Configuration()
+        if 'username' in args and 'password' in args and args.username and args.password:
+            configuration.username = args.username
+            configuration.password = args.password
+        else:
+            configuration.cert_file = '/etc/pki/consumer/cert.pem'
+            configuration.key_file = '/etc/pki/consumer/key.pem'
+            configuration.cert_reqs = ssl.CERT_REQUIRED
+            cert = certificate.create_from_file('/etc/pki/consumer/cert.pem')
+            consumerid = cert.subject['CN'].replace('-', '')
+        configuration.host = 'https://localhost:8443/candlepin'
+        configuration.verify_ssl = False
+        client = swagger_client.ApiClient(configuration)
+        client.consumerid = consumerid
+        print(consumerid)
+    return client
+
+def register(args):
+    registration_api = RegistrationApi(get_client(args))
+    result = registration_api.register(body={
+        'facts': {
+            'uname.machine': 'x86_64'
+        }
+    }, name='khowell_test', autoattach=args.attach, org=args.org, servicelevel=args.servicelevel, release=args.release)
+    with open('/etc/pki/consumer/cert.pem', 'w') as cert_pem:
+        cert_pem.write(result.identity_certificate.certificate)
+    with open('/etc/pki/consumer/key.pem', 'w') as cert_pem:
+        cert_pem.write(result.identity_certificate.key)
+
+def unregister(args):
+    client = get_client(args)
+    registration_api = RegistrationApi(client) 
+    registration_api.unregister(consumer_id=client.consumerid)
+
+def show_help(args):
+    global parser
+    parser.print_help()
+
+parser.set_defaults(func=show_help)
+
+subparsers = parser.add_subparsers()
+
+register_parser = subparsers.add_parser('register')
+register_parser.add_argument('--username')
+register_parser.add_argument('--password')
+register_parser.add_argument('--attach', action='store_true')
+register_parser.add_argument('--org')
+register_parser.add_argument('--servicelevel')
+register_parser.add_argument('--release')
+register_parser.set_defaults(func=register)
+
+register_parser = subparsers.add_parser('unregister')
+register_parser.set_defaults(func=unregister)
+
+args = parser.parse_args()
+args.func(args)
+
