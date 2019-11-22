@@ -17,10 +17,12 @@ from __future__ import print_function, division, absolute_import
 # granted to use or replicate Red Hat trademarks that are incorporated
 # in this software or its documentation.
 #
+from base64 import b64decode
 import datetime
 import fileinput
 import fnmatch
 import getpass
+import json
 import logging
 from optparse import OptionValueError, SUPPRESS_HELP
 import os
@@ -198,6 +200,40 @@ CONSUMED_LIST = [
 SP_CONFLICT_MESSAGE = _("Warning: A {attr} of \"{download_value}\" was recently set for this system "
                         "by the entitlement server administrator.\n{advice}")
 SP_ADVICE = _("If you'd like to overwrite the server side change please run: {command}")
+
+
+def has_b64_activation_key(activation_keys):
+    for key in activation_keys:
+        if key.startswith('eyJv'):
+            try:
+                b64decode(key)
+                return True
+            except:
+                pass
+    return False
+
+
+def get_b64_activation_key_org(activation_keys):
+    for key in activation_keys:
+        if key.startswith('eyJv'):
+            try:
+                return json.loads(b64decode(key))['org']
+            except:
+                pass
+    raise Exception('Uh-oh!')  # FIXME needs better error type
+
+
+def _normalize_key(key):
+    if key.startswith('eyJv'):
+        try:
+            return json.loads(b64decode(key))['key']
+        except:
+            pass
+    return key
+
+
+def normalize_activation_keys(activation_keys):
+    return map(_normalize_key, activation_keys)
 
 
 def handle_exception(msg, ex):
@@ -1275,7 +1311,7 @@ class RegisterCommand(UserPassCommand):
             system_exit(os.EX_USAGE, _("Error: Must specify an activation key"))
         elif self.options.service_level and not self.autoattach:
             system_exit(os.EX_USAGE, _("Error: Must use --auto-attach with --servicelevel."))
-        elif self.options.activation_keys and not self.options.org:
+        elif self.options.activation_keys and not self.options.org and not has_b64_activation_key(self.options.activation_keys):
             system_exit(os.EX_USAGE, _("Error: Must provide --org with activation keys."))
         elif self.options.force and self.options.consumerid:
             system_exit(os.EX_USAGE, _("Error: Can not force registration while attempting to recover registration with consumerid. Please use --force without --consumerid to re-register or use the clean command and try again without --force."))
@@ -1363,7 +1399,7 @@ class RegisterCommand(UserPassCommand):
 
                 consumer = service.register(
                     owner_key,
-                    activation_keys=self.options.activation_keys,
+                    activation_keys=normalize_activation_keys(self.options.activation_keys),
                     environment=environment_id,
                     force=self.options.force,
                     name=self.options.consumername,
@@ -1505,6 +1541,9 @@ class RegisterCommand(UserPassCommand):
         """
         if self.options.org:
             return self.options.org
+        elif has_b64_activation_key(self.options.activation_keys):
+            # get org from first base64 activation key
+            return get_b64_activation_key_org(self.options.activation_keys)
 
         owners = cp.getOwnerList(self.username)
 
